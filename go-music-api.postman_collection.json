@@ -142,7 +142,26 @@
 			"name": "Music",
 			"item": [
 				{
-					"name": "Create Music",
+					"name": "Create Music (Upload)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has file URLs\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.mp3_url).to.not.be.null;",
+									"    pm.expect(jsonData.mp4_url).to.not.be.null;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"auth": {
 							"type": "bearer",

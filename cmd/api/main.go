@@ -8,10 +8,13 @@ import (
 	// นำเข้า packages ภายในโปรเจค
 	"go-music-api/internal/delivery/http/handler"    // นำเข้า handler สำหรับจัดการ HTTP request
 	"go-music-api/internal/delivery/http/middleware" // นำเข้า middleware สำหรับจัดการ request ก่อนถึง handler
-	"go-music-api/internal/infrastructure/database"  // นำเข้า database สำหรับจัดการการเชื่อมต่อฐานข้อมูล
-	"go-music-api/internal/infrastructure/storage"   // นำเข้า storage สำหรับจัดการไฟล์
-	"go-music-api/internal/repository/postgres"      // นำเข้า repository สำหรับจัดการข้อมูลกับ Postgres
-	"go-music-api/internal/service"                  // นำเข้า service สำหรับ business logic
+	"go-music-api/internal/domain"
+
+	// นำเข้า domain entities
+	"go-music-api/internal/infrastructure/database" // นำเข้า database สำหรับจัดการการเชื่อมต่อฐานข้อมูล
+	"go-music-api/internal/infrastructure/storage"  // นำเข้า storage สำหรับจัดการไฟล์
+	"go-music-api/internal/repository/postgres"     // นำเข้า repository สำหรับจัดการข้อมูลกับ Postgres
+	"go-music-api/internal/service"                 // นำเข้า service สำหรับ business logic
 
 	"github.com/gin-gonic/gin" // นำเข้า gin web framework
 	"github.com/joho/godotenv" // นำเข้า godotenv สำหรับโหลดไฟล์ .env
@@ -34,24 +37,51 @@ func main() { // ฟังก์ชัน main เป็นจุดเริ่
 	}
 
 	// Init Storage
-	// อ่านค่า UPLOAD_DIR จาก environment variable
-	uploadDir := os.Getenv("UPLOAD_DIR")
-	if uploadDir == "" {
-		// ถ้าไม่ได้ตั้งค่าไว้ ให้ใช้ค่า default เป็น "./uploads"
-		uploadDir = "./uploads"
-	}
-	// อ่านค่า BASE_URL จาก environment variable
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		// ถ้าไม่ได้ตั้งค่าไว้ ให้ใช้ค่า default
-		baseURL = "http://localhost:8080/uploads"
-	}
+	// ตรวจสอบประเภท Storage ที่ต้องการใช้ (local หรือ s3)
+	storageType := os.Getenv("STORAGE_TYPE")
+	var storageService domain.StorageService
+	// var err error // ลบออกเพราะประกาศ err ในแต่ละ block หรือใช้ short decl อย่างระวัง
 
-	// เริ่มต้น service สำหรับจัดการไฟล์ (Local Storage)
-	storageService, err := storage.NewLocalStorage(uploadDir, baseURL)
-	if err != nil {
-		// ถ้าเริ่มต้นไม่ได้ ให้จบการทำงานและแสดง error
-		log.Fatalf("Failed to initialize storage: %v", err)
+	// ตัวแปรสำหรับเก็บ path upload (ใช้เฉพาะ Local Storage)
+	var uploadDir string
+
+	if storageType == "s3" {
+		// ถ้าเลือกใช้ S3
+		bucketName := os.Getenv("AWS_BUCKET_NAME")
+		region := os.Getenv("AWS_REGION")
+		if bucketName == "" || region == "" {
+			log.Fatal("AWS_BUCKET_NAME and AWS_REGION are required for s3 storage")
+		}
+		// เริ่มต้น S3 Storage
+		var err error
+		storageService, err = storage.NewS3Storage(bucketName, region)
+		if err != nil {
+			log.Fatalf("Failed to initialize S3 storage: %v", err)
+		}
+		log.Println("Using S3 Storage")
+	} else {
+		// Default ใช้ Local Storage
+		// อ่านค่า UPLOAD_DIR จาก environment variable
+		uploadDir = os.Getenv("UPLOAD_DIR")
+		if uploadDir == "" {
+			// ถ้าไม่ได้ตั้งค่าไว้ ให้ใช้ค่า default เป็น "./uploads"
+			uploadDir = "./uploads"
+		}
+		// อ่านค่า BASE_URL จาก environment variable
+		baseURL := os.Getenv("BASE_URL")
+		if baseURL == "" {
+			// ถ้าไม่ได้ตั้งค่าไว้ ให้ใช้ค่า default
+			baseURL = "http://localhost:8080/uploads"
+		}
+
+		// เริ่มต้น service สำหรับจัดการไฟล์ (Local Storage)
+		var err error
+		storageService, err = storage.NewLocalStorage(uploadDir, baseURL)
+		if err != nil {
+			// ถ้าเริ่มต้นไม่ได้ ให้จบการทำงานและแสดง error
+			log.Fatalf("Failed to initialize storage: %v", err)
+		}
+		log.Println("Using Local Storage")
 	}
 
 	// Init Repositories
@@ -83,8 +113,10 @@ func main() { // ฟังก์ชัน main เป็นจุดเริ่
 	r.Use(middleware.CORSMiddleware())
 
 	// Static files for uploads
-	// กำหนด path /uploads ให้เข้าถึงไฟล์ในโฟลเดอร์ uploadDir ได้โดยตรง
-	r.Static("/uploads", uploadDir)
+	// กำหนด path /uploads ให้เข้าถึงไฟล์ในโฟลเดอร์ uploadDir ได้โดยตรง (เฉพาะ Local Storage)
+	if storageType != "s3" && uploadDir != "" {
+		r.Static("/uploads", uploadDir)
+	}
 
 	// Routes
 	// สร้างกลุ่ม routes ที่ขึ้นต้นด้วย /api/v1
