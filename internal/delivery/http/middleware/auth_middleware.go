@@ -41,8 +41,9 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// บันทึก user_id ลงใน context เพื่อให้ handler ถัดไปใช้งานได้
+		// บันทึก user_id และ email ลงใน context เพื่อให้ handler ถัดไปใช้งานได้
 		c.Set("user_id", claims.UserID)
+		c.Set("email", claims.Email)
 		// ไปทำงานต่อที่ handler ถัดไป
 		c.Next()
 	}
@@ -72,10 +73,11 @@ func HumaAuthMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
 			return
 		}
 
-		// บันทึก user_id ลงใน context
+		// บันทึก user_id และ email ลงใน context
 		// Huma ใช้ context.Context ที่อยู่ใน ctx
-		// เราต้องสร้าง context ใหม่ที่มี user_id แล้ว set กลับไปที่ ctx
+		// เราต้องสร้าง context ใหม่ที่มี user_id/email แล้ว set กลับไปที่ ctx
 		newCtx := context.WithValue(ctx.Context(), "user_id", claims.UserID)
+		newCtx = context.WithValue(newCtx, "email", claims.Email)
 		ctx = huma.WithContext(ctx, newCtx)
 
 		next(ctx)

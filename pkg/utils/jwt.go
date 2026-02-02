@@ -12,15 +12,17 @@ var secretKey = []byte("your-secret-key") // In real app, load from ENV
 
 // Claims struct สำหรับเก็บข้อมูลใน Payload ของ JWT
 type Claims struct {
-	UserID uint `json:"user_id"` // เก็บ ID ของผู้ใช้
+	UserID uint   `json:"user_id"` // เก็บ ID ของผู้ใช้
+	Email  string `json:"email"`   // เก็บ Email ของผู้ใช้
 	jwt.RegisteredClaims
 }
 
 // GenerateTokenPair สร้าง Access Token และ Refresh Token
-func GenerateTokenPair(userID uint) (string, string, error) {
+func GenerateTokenPair(userID uint, email string) (string, string, error) {
 	// สร้าง Access Token (อายุสั้น เช่น 15 นาที)
 	accessTokenClaims := &Claims{
 		UserID: userID,
+		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)), // หมดอายุใน 15 นาที
 			IssuedAt:  jwt.NewNumericDate(time.Now()),                       // เวลาที่ออก token
@@ -35,6 +37,7 @@ func GenerateTokenPair(userID uint) (string, string, error) {
 	// สร้าง Refresh Token (อายุนาน เช่น 7 วัน)
 	refreshTokenClaims := &Claims{
 		UserID: userID,
+		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // หมดอายุใน 7 วัน
 			IssuedAt:  jwt.NewNumericDate(time.Now()),                         // เวลาที่ออก token

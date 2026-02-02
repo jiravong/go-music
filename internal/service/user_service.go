@@ -62,7 +62,7 @@ func (s *userService) Login(ctx context.Context, email, password string) (string
 	}
 
 	// สร้าง JWT token pair (Access Token และ Refresh Token)
-	accessToken, refreshToken, err := utils.GenerateTokenPair(user.ID)
+	accessToken, refreshToken, err := utils.GenerateTokenPair(user.ID, user.Email)
 	if err != nil {
 		return "", "", err
 	}
@@ -81,7 +81,7 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (st
 
 	// สร้าง Token Pair ใหม่ (จริงๆ เราต้องการแค่ Access Token ใหม่ แต่ใช้ฟังก์ชันเดิมเพื่อความสะดวก)
 	// หมายเหตุ: ในระบบจริงอาจจะมีการตรวจสอบเพิ่มเติม เช่น Blacklist หรือเช็คว่า user ยัง active อยู่ไหม
-	accessToken, _, err := utils.GenerateTokenPair(claims.UserID)
+	accessToken, _, err := utils.GenerateTokenPair(claims.UserID, claims.Email)
 	if err != nil {
 		return "", err
 	}

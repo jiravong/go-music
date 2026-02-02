@@ -39,11 +39,21 @@ type CreateMusicOutput struct {
 
 // Create จัดการ request สำหรับสร้างเพลงใหม่
 func (h *MusicHandler) Create(ctx context.Context, input *CreateMusicInput) (*CreateMusicOutput, error) {
+	// ดึง email จาก context
+	email, ok := ctx.Value("email").(string)
+	if !ok {
+		email = "system"
+	}
+
 	// สร้าง object Music
 	music := &domain.Music{
 		Title:  input.Body.Title,
 		Artist: input.Body.Artist,
 		Lyrics: input.Body.Lyrics,
+		BaseModel: domain.BaseModel{
+			CreatedBy: email,
+			UpdatedBy: email,
+		},
 	}
 
 	// เรียก service เพื่อสร้างเพลงและอัปโหลดไฟล์
@@ -138,9 +148,18 @@ type UpdateMusicOutput struct {
 
 // Update แก้ไขข้อมูลเพลง
 func (h *MusicHandler) Update(ctx context.Context, input *UpdateMusicInput) (*UpdateMusicOutput, error) {
+	// ดึง email จาก context
+	email, ok := ctx.Value("email").(string)
+	if !ok {
+		email = "system"
+	}
+
 	// Map ข้อมูลจาก input ไปยัง domain.Music
 	music := &domain.Music{
-		ID:     input.ID,
+		BaseModel: domain.BaseModel{
+			ID:        input.ID,
+			UpdatedBy: email,
+		},
 		Title:  input.Body.Title,
 		Artist: input.Body.Artist,
 		Lyrics: input.Body.Lyrics,

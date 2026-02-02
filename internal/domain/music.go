@@ -3,19 +3,16 @@ package domain // ประกาศ package domain
 import (
 	"context"        // นำเข้า context
 	"mime/multipart" // นำเข้า multipart สำหรับจัดการไฟล์อัปโหลด
-	"time"           // นำเข้า time
 )
 
 // Music struct เก็บข้อมูลเพลง
 type Music struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`   // ID ของเพลง (Primary Key)
-	Title     string    `json:"title" gorm:"not null"`  // ชื่อเพลง
-	Artist    string    `json:"artist" gorm:"not null"` // ชื่อศิลปิน
-	Lyrics    string    `json:"lyrics"`                 // เนื้อเพลง
-	MP3URL    string    `json:"mp3_url"`                // URL ไฟล์ MP3
-	MP4URL    string    `json:"mp4_url"`                // URL ไฟล์ MP4
-	CreatedAt time.Time `json:"created_at"`             // เวลาที่สร้าง
-	UpdatedAt time.Time `json:"updated_at"`             // เวลาที่แก้ไขล่าสุด
+	BaseModel
+	Title  string `json:"title" gorm:"not null"`  // ชื่อเพลง
+	Artist string `json:"artist" gorm:"not null"` // ชื่อศิลปิน
+	Lyrics string `json:"lyrics"`                 // เนื้อเพลง
+	MP3URL string `json:"mp3_url"`                // URL ไฟล์ MP3
+	MP4URL string `json:"mp4_url"`                // URL ไฟล์ MP4
 }
 
 // MusicRepository interface กำหนดเมธอดสำหรับจัดการข้อมูล Music ในฐานข้อมูล

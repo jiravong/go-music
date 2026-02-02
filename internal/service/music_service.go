@@ -81,14 +81,21 @@ func (s *musicService) Update(ctx context.Context, music *domain.Music) error {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
-	// ตรวจสอบว่ามีเพลงนี้อยู่ในระบบหรือไม่
-	_, err := s.musicRepo.GetByID(ctx, music.ID)
+	// ตรวจสอบว่ามีเพลงนี้อยู่ในระบบหรือไม่ และดึงข้อมูลเดิมมา
+	existingMusic, err := s.musicRepo.GetByID(ctx, music.ID)
 	if err != nil {
 		return err
 	}
 
-	// อัปเดตข้อมูลเพลง
-	return s.musicRepo.Update(ctx, music)
+	// อัปเดตเฉพาะข้อมูลที่แก้ไขได้
+	existingMusic.Title = music.Title
+	existingMusic.Artist = music.Artist
+	existingMusic.Lyrics = music.Lyrics
+	existingMusic.UpdatedBy = music.UpdatedBy
+	// existingMusic.UpdatedAt จะถูกจัดการโดย GORM หรือเราจะ set เองก็ได้ แต่ GORM จัดการให้
+
+	// บันทึกข้อมูลที่อัปเดตแล้วลงฐานข้อมูล
+	return s.musicRepo.Update(ctx, existingMusic)
 }
 
 // Delete ลบเพลงตาม ID
