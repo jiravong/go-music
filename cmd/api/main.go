@@ -1,7 +1,8 @@
 package main // ประกาศ package main เป็นจุดเริ่มต้นของโปรแกรม
 
 import (
-	"log"  // นำเข้า package log สำหรับการแสดงข้อความ log
+	"log" // นำเข้า package log สำหรับการแสดงข้อความ log
+	"net/http"
 	"os"   // นำเข้า package os สำหรับการจัดการกับระบบปฏิบัติการ เช่น อ่าน environment variables
 	"time" // นำเข้า package time สำหรับการจัดการเรื่องเวลา
 
@@ -16,8 +17,10 @@ import (
 	"go-music-api/internal/repository/postgres"     // นำเข้า repository สำหรับจัดการข้อมูลกับ Postgres
 	"go-music-api/internal/service"                 // นำเข้า service สำหรับ business logic
 
-	"github.com/gin-gonic/gin" // นำเข้า gin web framework
-	"github.com/joho/godotenv" // นำเข้า godotenv สำหรับโหลดไฟล์ .env
+	"github.com/danielgtaylor/huma/v2"                  // นำเข้า huma
+	"github.com/danielgtaylor/huma/v2/adapters/humagin" // นำเข้า humagin adapter
+	"github.com/gin-gonic/gin"                          // นำเข้า gin web framework
+	"github.com/joho/godotenv"                          // นำเข้า godotenv สำหรับโหลดไฟล์ .env
 )
 
 func main() { // ฟังก์ชัน main เป็นจุดเริ่มต้นการทำงานของโปรแกรม
@@ -118,40 +121,113 @@ func main() { // ฟังก์ชัน main เป็นจุดเริ่
 		r.Static("/uploads", uploadDir)
 	}
 
-	// Routes
-	// สร้างกลุ่ม routes ที่ขึ้นต้นด้วย /api/v1
-	api := r.Group("/api/v1")
-	{
-		// Auth
-		// สร้างกลุ่ม routes สำหรับ authentication (/api/v1/auth)
-		auth := api.Group("/auth")
-		{
-			// Route สำหรับลงทะเบียนผู้ใช้ (POST /api/v1/auth/register)
-			auth.POST("/register", userHandler.Register)
-			// Route สำหรับเข้าสู่ระบบ (POST /api/v1/auth/login)
-			auth.POST("/login", userHandler.Login)
-			// Route สำหรับขอ Access Token ใหม่ด้วย Refresh Token (POST /api/v1/auth/refresh-token)
-			auth.POST("/refresh-token", userHandler.RefreshToken)
-		}
-
-		// Music (Protected)
-		// สร้างกลุ่ม routes สำหรับ music (/api/v1/music)
-		music := api.Group("/music")
-		// ใช้ AuthMiddleware เพื่อตรวจสอบ token ก่อนเข้าถึง routes ในกลุ่มนี้
-		music.Use(middleware.AuthMiddleware())
-		{
-			// Route สำหรับสร้างเพลงใหม่ (POST /api/v1/music/)
-			music.POST("/", musicHandler.Create)
-			// Route สำหรับดึงรายการเพลงทั้งหมด (GET /api/v1/music/)
-			music.GET("/", musicHandler.GetAll)
-			// Route สำหรับดึงข้อมูลเพลงตาม ID (GET /api/v1/music/:id)
-			music.GET("/:id", musicHandler.GetByID)
-			// Route สำหรับแก้ไขข้อมูลเพลงตาม ID (PUT /api/v1/music/:id)
-			music.PUT("/:id", musicHandler.Update)
-			// Route สำหรับลบเพลงตาม ID (DELETE /api/v1/music/:id)
-			music.DELETE("/:id", musicHandler.Delete)
-		}
+	// Init Huma Configuration
+	config := huma.DefaultConfig("Go Music API", "1.0.0")
+	config.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		"bearer": {
+			Type:         "http",
+			Scheme:       "bearer",
+			BearerFormat: "JWT",
+		},
 	}
+	humaApi := humagin.New(r, config)
+
+	// Public Routes (Auth)
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "register-user",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/register",
+		Summary:     "Register a new user",
+		Description: "Register a new user with email and password",
+		Tags:        []string{"Auth"},
+	}, userHandler.Register)
+
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "login-user",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/login",
+		Summary:     "Login user",
+		Description: "Login with email and password to get access and refresh tokens",
+		Tags:        []string{"Auth"},
+	}, userHandler.Login)
+
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "refresh-token",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/auth/refresh-token",
+		Summary:     "Refresh Access Token",
+		Description: "Get a new access token using a refresh token",
+		Tags:        []string{"Auth"},
+	}, userHandler.RefreshToken)
+
+	// Protected Routes (Music)
+	// Create middleware
+	authMiddleware := middleware.HumaAuthMiddleware(humaApi)
+
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "create-music",
+		Method:      http.MethodPost,
+		Path:        "/api/v1/music",
+		Summary:     "Create music",
+		Description: "Create a new music entry with MP3 and MP4 files",
+		Tags:        []string{"Music"},
+		Security: []map[string][]string{
+			{"bearer": {}},
+		},
+		Middlewares: huma.Middlewares{authMiddleware},
+	}, musicHandler.Create)
+
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "get-all-music",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/music",
+		Summary:     "Get all music",
+		Description: "Retrieve a list of all music entries",
+		Tags:        []string{"Music"},
+		Security: []map[string][]string{
+			{"bearer": {}},
+		},
+		Middlewares: huma.Middlewares{authMiddleware},
+	}, musicHandler.GetAll)
+
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "get-music-by-id",
+		Method:      http.MethodGet,
+		Path:        "/api/v1/music/{id}",
+		Summary:     "Get music by ID",
+		Description: "Retrieve a specific music entry by its ID",
+		Tags:        []string{"Music"},
+		Security: []map[string][]string{
+			{"bearer": {}},
+		},
+		Middlewares: huma.Middlewares{authMiddleware},
+	}, musicHandler.GetByID)
+
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "update-music",
+		Method:      http.MethodPut,
+		Path:        "/api/v1/music/{id}",
+		Summary:     "Update music",
+		Description: "Update an existing music entry",
+		Tags:        []string{"Music"},
+		Security: []map[string][]string{
+			{"bearer": {}},
+		},
+		Middlewares: huma.Middlewares{authMiddleware},
+	}, musicHandler.Update)
+
+	huma.Register(humaApi, huma.Operation{
+		OperationID: "delete-music",
+		Method:      http.MethodDelete,
+		Path:        "/api/v1/music/{id}",
+		Summary:     "Delete music",
+		Description: "Delete a music entry by its ID",
+		Tags:        []string{"Music"},
+		Security: []map[string][]string{
+			{"bearer": {}},
+		},
+		Middlewares: huma.Middlewares{authMiddleware},
+	}, musicHandler.Delete)
 
 	// อ่านค่า PORT จาก environment variable
 	port := os.Getenv("PORT")

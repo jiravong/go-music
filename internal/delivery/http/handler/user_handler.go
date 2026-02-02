@@ -1,11 +1,11 @@
 package handler // ประกาศ package handler
 
 import (
-	"net/http" // นำเข้า package net/http
+	"context" // นำเข้า context
 
 	"go-music-api/internal/domain" // นำเข้า domain entities
 
-	"github.com/gin-gonic/gin" // นำเข้า gin
+	"github.com/danielgtaylor/huma/v2" // นำเข้า huma
 )
 
 // UserHandler struct สำหรับจัดการ HTTP request ที่เกี่ยวกับ User
@@ -18,90 +18,114 @@ func NewUserHandler(userService domain.UserService) *UserHandler {
 	return &UserHandler{userService: userService}
 }
 
-// Register ลงทะเบียนผู้ใช้ใหม่ (POST /auth/register)
-func (h *UserHandler) Register(c *gin.Context) {
-	// ใช้ struct แยกสำหรับรับข้อมูล เพื่อแก้ปัญหา json:"-" ใน domain.User ที่ทำให้รับ password ไม่ได้
-	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required,min=6"`
+// RegisterInput struct สำหรับรับข้อมูลลงทะเบียน
+type RegisterInput struct {
+	Body struct {
+		Email    string `json:"email" required:"true" format:"email" doc:"User email address"`
+		Password string `json:"password" required:"true" minLength:"6" doc:"User password (min 6 chars)"`
 	}
+}
 
-	// Bind JSON body เข้ากับตัวแปร req
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+// RegisterOutput struct สำหรับ response การลงทะเบียน
+type RegisterOutput struct {
+	Body struct {
+		Message string `json:"message" doc:"Success message"`
 	}
+}
 
-	// Map ข้อมูลจาก req ไปยัง domain.User
+// Register ลงทะเบียนผู้ใช้ใหม่
+func (h *UserHandler) Register(ctx context.Context, input *RegisterInput) (*RegisterOutput, error) {
+	// Map ข้อมูลจาก input ไปยัง domain.User
 	user := &domain.User{
-		Email:    req.Email,
-		Password: req.Password,
+		Email:    input.Body.Email,
+		Password: input.Body.Password,
 	}
 
 	// เรียก service เพื่อลงทะเบียน
-	if err := h.userService.Register(c.Request.Context(), user); err != nil {
+	if err := h.userService.Register(ctx, user); err != nil {
 		// ถ้ามี email ซ้ำ
 		if err == domain.ErrConflict {
-			c.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
-			return
+			return nil, huma.Error409Conflict("Email already exists")
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
 	// ส่ง response แจ้งว่าลงทะเบียนสำเร็จ
-	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully"})
+	return &RegisterOutput{
+		Body: struct {
+			Message string `json:"message" doc:"Success message"`
+		}{
+			Message: "User registered successfully",
+		},
+	}, nil
 }
 
-// Login เข้าสู่ระบบ (POST /auth/login)
-func (h *UserHandler) Login(c *gin.Context) {
-	// struct สำหรับรับค่า request body
-	var req struct {
-		Email    string `json:"email" binding:"required,email"` // อีเมล จำเป็นต้องมีและรูปแบบถูกต้อง
-		Password string `json:"password" binding:"required"`    // รหัสผ่าน จำเป็นต้องมี
+// LoginInput struct สำหรับรับข้อมูล Login
+type LoginInput struct {
+	Body struct {
+		Email    string `json:"email" required:"true" format:"email" doc:"User email"`
+		Password string `json:"password" required:"true" doc:"User password"`
 	}
+}
 
-	// Bind JSON body เข้ากับตัวแปร req
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+// LoginOutput struct สำหรับ response Login
+type LoginOutput struct {
+	Body struct {
+		AccessToken  string `json:"access_token" doc:"JWT Access Token"`
+		RefreshToken string `json:"refresh_token" doc:"JWT Refresh Token"`
 	}
+}
 
+// Login เข้าสู่ระบบ
+func (h *UserHandler) Login(ctx context.Context, input *LoginInput) (*LoginOutput, error) {
 	// เรียก service เพื่อเข้าสู่ระบบและรับ token
-	accessToken, refreshToken, err := h.userService.Login(c.Request.Context(), req.Email, req.Password)
+	accessToken, refreshToken, err := h.userService.Login(ctx, input.Body.Email, input.Body.Password)
 	if err != nil {
 		// ถ้าข้อมูลไม่ถูกต้อง
 		if err == domain.ErrInvalidCreds {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
-			return
+			return nil, huma.Error401Unauthorized("Invalid email or password")
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
 	// ส่ง token กลับไป
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
-	})
+	return &LoginOutput{
+		Body: struct {
+			AccessToken  string `json:"access_token" doc:"JWT Access Token"`
+			RefreshToken string `json:"refresh_token" doc:"JWT Refresh Token"`
+		}{
+			AccessToken:  accessToken,
+			RefreshToken: refreshToken,
+		},
+	}, nil
 }
 
-// RefreshToken ขอ Access Token ใหม่ (POST /auth/refresh-token)
-func (h *UserHandler) RefreshToken(c *gin.Context) {
-	var req struct {
-		RefreshToken string `json:"refresh_token" binding:"required"`
+// RefreshTokenInput struct สำหรับรับ Refresh Token
+type RefreshTokenInput struct {
+	Body struct {
+		RefreshToken string `json:"refresh_token" required:"true" doc:"Refresh Token to get new Access Token"`
 	}
+}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+// RefreshTokenOutput struct สำหรับ response Refresh Token
+type RefreshTokenOutput struct {
+	Body struct {
+		AccessToken string `json:"access_token" doc:"New Access Token"`
 	}
+}
 
-	accessToken, err := h.userService.RefreshToken(c.Request.Context(), req.RefreshToken)
+// RefreshToken ขอ Access Token ใหม่
+func (h *UserHandler) RefreshToken(ctx context.Context, input *RefreshTokenInput) (*RefreshTokenOutput, error) {
+	accessToken, err := h.userService.RefreshToken(ctx, input.Body.RefreshToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
-		return
+		return nil, huma.Error401Unauthorized("Invalid refresh token")
 	}
 
-	c.JSON(http.StatusOK, gin.H{"access_token": accessToken})
+	return &RefreshTokenOutput{
+		Body: struct {
+			AccessToken string `json:"access_token" doc:"New Access Token"`
+		}{
+			AccessToken: accessToken,
+		},
+	}, nil
 }

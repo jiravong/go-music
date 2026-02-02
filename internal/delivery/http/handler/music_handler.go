@@ -1,12 +1,12 @@
 package handler // ประกาศ package handler
 
 import (
-	"net/http" // นำเข้า package net/http สำหรับจัดการ status codes
-	"strconv"  // นำเข้า strconv สำหรับแปลง string เป็น int
+	"context"        // นำเข้า context
+	"mime/multipart" // นำเข้า multipart สำหรับจัดการไฟล์
 
 	"go-music-api/internal/domain" // นำเข้า domain entities
 
-	"github.com/gin-gonic/gin" // นำเข้า gin web framework
+	"github.com/danielgtaylor/huma/v2" // นำเข้า huma
 )
 
 // MusicHandler struct สำหรับจัดการ HTTP request ที่เกี่ยวกับ Music
@@ -19,149 +19,179 @@ func NewMusicHandler(musicService domain.MusicService) *MusicHandler {
 	return &MusicHandler{musicService: musicService}
 }
 
-// Create จัดการ request สำหรับสร้างเพลงใหม่ (POST /music)
-func (h *MusicHandler) Create(c *gin.Context) {
-	// Multipart form parsing
-	// กำหนดขนาดสูงสุดของไฟล์ที่อนุญาตให้ parse คือ 32MB
-	if err := c.Request.ParseMultipartForm(32 << 20); err != nil { // 32MB max memory
-		// ถ้า parse ไม่ผ่าน ให้ส่ง error 400
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Could not parse multipart form"})
-		return
+// CreateMusicInput struct สำหรับรับข้อมูลสร้างเพลง
+type CreateMusicInput struct {
+	Body struct {
+		Title   string                `form:"title" required:"true" doc:"Song title"`
+		Artist  string                `form:"artist" required:"true" doc:"Artist name"`
+		Lyrics  string                `form:"lyrics" doc:"Song lyrics"`
+		MP3File *multipart.FileHeader `form:"mp3_file" doc:"MP3 Audio file"`
+		MP4File *multipart.FileHeader `form:"mp4_file" doc:"MP4 Video file"`
+	} `contentType:"multipart/form-data"`
+}
+
+// CreateMusicOutput struct สำหรับ response การสร้างเพลง
+type CreateMusicOutput struct {
+	Body struct {
+		Music *domain.Music `json:"music" doc:"Created music object"`
 	}
+}
 
-	// รับค่าจาก form data
-	title := c.PostForm("title")
-	artist := c.PostForm("artist")
-	lyrics := c.PostForm("lyrics")
-
-	// ตรวจสอบข้อมูลที่จำเป็น
-	if title == "" || artist == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Title and Artist are required"})
-		return
-	}
-
-	// รับไฟล์ MP3 จาก form data
-	mp3File, err := c.FormFile("mp3_file")
-	if err != nil && err != http.ErrMissingFile {
-		// ถ้ามี error และไม่ใช่กรณีที่ไม่มีไฟล์ส่งมา ให้ส่ง error 400
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid MP3 file"})
-		return
-	}
-
-	// รับไฟล์ MP4 จาก form data
-	mp4File, err := c.FormFile("mp4_file")
-	if err != nil && err != http.ErrMissingFile {
-		// ถ้ามี error และไม่ใช่กรณีที่ไม่มีไฟล์ส่งมา ให้ส่ง error 400
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid MP4 file"})
-		return
-	}
-
-	// ถ้าไม่ได้ส่งไฟล์มา ตัวแปร file จะเป็น nil ซึ่ง service จะจัดการต่อเอง
-
+// Create จัดการ request สำหรับสร้างเพลงใหม่
+func (h *MusicHandler) Create(ctx context.Context, input *CreateMusicInput) (*CreateMusicOutput, error) {
 	// สร้าง object Music
 	music := &domain.Music{
-		Title:  title,
-		Artist: artist,
-		Lyrics: lyrics,
+		Title:  input.Body.Title,
+		Artist: input.Body.Artist,
+		Lyrics: input.Body.Lyrics,
 	}
 
 	// เรียก service เพื่อสร้างเพลงและอัปโหลดไฟล์
-	if err := h.musicService.Create(c.Request.Context(), music, mp3File, mp4File); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	if err := h.musicService.Create(ctx, music, input.Body.MP3File, input.Body.MP4File); err != nil {
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
-	// ส่ง response กลับเป็น JSON พร้อม status 201 Created
-	c.JSON(http.StatusCreated, music)
+	// ส่ง response กลับ
+	return &CreateMusicOutput{
+		Body: struct {
+			Music *domain.Music `json:"music" doc:"Created music object"`
+		}{
+			Music: music,
+		},
+	}, nil
 }
 
-// GetByID ดึงข้อมูลเพลงตาม ID (GET /music/:id)
-func (h *MusicHandler) GetByID(c *gin.Context) {
-	// แปลง id จาก string ใน URL param เป็น int
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
+// GetMusicInput struct สำหรับรับ ID เพลง
+type GetMusicInput struct {
+	ID uint `path:"id" required:"true" doc:"Music ID"`
+}
 
+// GetMusicOutput struct สำหรับ response ข้อมูลเพลง
+type GetMusicOutput struct {
+	Body struct {
+		Music *domain.Music `json:"music" doc:"Music object"`
+	}
+}
+
+// GetByID ดึงข้อมูลเพลงตาม ID
+func (h *MusicHandler) GetByID(ctx context.Context, input *GetMusicInput) (*GetMusicOutput, error) {
 	// เรียก service เพื่อค้นหาเพลง
-	music, err := h.musicService.GetByID(c.Request.Context(), uint(id))
+	music, err := h.musicService.GetByID(ctx, input.ID)
 	if err != nil {
 		if err == domain.ErrNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
-			return
+			return nil, huma.Error404NotFound("Music not found")
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
 	// ส่งข้อมูลเพลงกลับ
-	c.JSON(http.StatusOK, music)
+	return &GetMusicOutput{
+		Body: struct {
+			Music *domain.Music `json:"music" doc:"Music object"`
+		}{
+			Music: music,
+		},
+	}, nil
 }
 
-// GetAll ดึงข้อมูลเพลงทั้งหมด (GET /music)
-func (h *MusicHandler) GetAll(c *gin.Context) {
+// GetAllMusicOutput struct สำหรับ response รายการเพลง
+type GetAllMusicOutput struct {
+	Body struct {
+		Musics []domain.Music `json:"musics" doc:"List of music objects"`
+	}
+}
+
+// GetAll ดึงข้อมูลเพลงทั้งหมด
+func (h *MusicHandler) GetAll(ctx context.Context, input *struct{}) (*GetAllMusicOutput, error) {
 	// เรียก service เพื่อดึงเพลงทั้งหมด
-	musics, err := h.musicService.GetAll(c.Request.Context())
+	musics, err := h.musicService.GetAll(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
 	// ส่งรายการเพลงกลับ
-	c.JSON(http.StatusOK, musics)
+	return &GetAllMusicOutput{
+		Body: struct {
+			Musics []domain.Music `json:"musics" doc:"List of music objects"`
+		}{
+			Musics: musics,
+		},
+	}, nil
 }
 
-// Update แก้ไขข้อมูลเพลง (PUT /music/:id)
-func (h *MusicHandler) Update(c *gin.Context) {
-	// แปลง id จาก URL param
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
+// UpdateMusicInput struct สำหรับรับข้อมูลแก้ไขเพลง
+type UpdateMusicInput struct {
+	ID   uint `path:"id" required:"true" doc:"Music ID"`
+	Body struct {
+		Title  string `json:"title" doc:"Song title"`
+		Artist string `json:"artist" doc:"Artist name"`
+		Lyrics string `json:"lyrics" doc:"Song lyrics"`
 	}
+}
 
-	var music domain.Music
-	// Bind JSON body เข้ากับตัวแปร music
-	if err := c.ShouldBindJSON(&music); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+// UpdateMusicOutput struct สำหรับ response การแก้ไขเพลง
+type UpdateMusicOutput struct {
+	Body struct {
+		Music *domain.Music `json:"music" doc:"Updated music object"`
 	}
-	music.ID = uint(id)
+}
+
+// Update แก้ไขข้อมูลเพลง
+func (h *MusicHandler) Update(ctx context.Context, input *UpdateMusicInput) (*UpdateMusicOutput, error) {
+	// Map ข้อมูลจาก input ไปยัง domain.Music
+	music := &domain.Music{
+		ID:     input.ID,
+		Title:  input.Body.Title,
+		Artist: input.Body.Artist,
+		Lyrics: input.Body.Lyrics,
+	}
 
 	// เรียก service เพื่ออัปเดตข้อมูล
-	if err := h.musicService.Update(c.Request.Context(), &music); err != nil {
+	if err := h.musicService.Update(ctx, music); err != nil {
 		if err == domain.ErrNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
-			return
+			return nil, huma.Error404NotFound("Music not found")
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
 	// ส่งข้อมูลที่อัปเดตแล้วกลับ
-	c.JSON(http.StatusOK, music)
+	return &UpdateMusicOutput{
+		Body: struct {
+			Music *domain.Music `json:"music" doc:"Updated music object"`
+		}{
+			Music: music,
+		},
+	}, nil
 }
 
-// Delete ลบเพลง (DELETE /music/:id)
-func (h *MusicHandler) Delete(c *gin.Context) {
-	// แปลง id จาก URL param
-	id, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
+// DeleteMusicInput struct สำหรับรับ ID เพลงที่จะลบ
+type DeleteMusicInput struct {
+	ID uint `path:"id" required:"true" doc:"Music ID"`
+}
 
+// DeleteMusicOutput struct สำหรับ response การลบเพลง
+type DeleteMusicOutput struct {
+	Body struct {
+		Message string `json:"message" doc:"Success message"`
+	}
+}
+
+// Delete ลบเพลง
+func (h *MusicHandler) Delete(ctx context.Context, input *DeleteMusicInput) (*DeleteMusicOutput, error) {
 	// เรียก service เพื่อลบเพลง
-	if err := h.musicService.Delete(c.Request.Context(), uint(id)); err != nil {
+	if err := h.musicService.Delete(ctx, input.ID); err != nil {
 		if err == domain.ErrNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
-			return
+			return nil, huma.Error404NotFound("Music not found")
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
 	// ส่งข้อความยืนยันการลบ
-	c.JSON(http.StatusOK, gin.H{"message": "Music deleted successfully"})
+	return &DeleteMusicOutput{
+		Body: struct {
+			Message string `json:"message" doc:"Success message"`
+		}{
+			Message: "Music deleted successfully",
+		},
+	}, nil
 }
