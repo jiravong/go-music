@@ -23,6 +23,7 @@ type UserRepository interface {
 
 // UserService interface กำหนดเมธอดสำหรับ business logic ของ User
 type UserService interface {
-	Register(ctx context.Context, user *User) error                    // ลงทะเบียนผู้ใช้
-	Login(ctx context.Context, email, password string) (string, error) // เข้าสู่ระบบ (คืนค่า token)
+	Register(ctx context.Context, user *User) error                            // ลงทะเบียนผู้ใช้
+	Login(ctx context.Context, email, password string) (string, string, error) // เข้าสู่ระบบ (คืนค่า access token และ refresh token)
+	RefreshToken(ctx context.Context, refreshToken string) (string, error)     // ขอ Access Token ใหม่ด้วย Refresh Token
 }

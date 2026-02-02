@@ -98,6 +98,8 @@ func main() { // ฟังก์ชัน main เป็นจุดเริ่
 			auth.POST("/register", userHandler.Register)
 			// Route สำหรับเข้าสู่ระบบ (POST /api/v1/auth/login)
 			auth.POST("/login", userHandler.Login)
+			// Route สำหรับขอ Access Token ใหม่ด้วย Refresh Token (POST /api/v1/auth/refresh-token)
+			auth.POST("/refresh-token", userHandler.RefreshToken)
 		}
 
 		// Music (Protected)

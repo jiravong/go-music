@@ -43,7 +43,7 @@ func (s *userService) Register(ctx context.Context, user *domain.User) error {
 }
 
 // Login ตรวจสอบข้อมูลการเข้าสู่ระบบและสร้าง Token
-func (s *userService) Login(ctx context.Context, email, password string) (string, error) {
+func (s *userService) Login(ctx context.Context, email, password string) (string, string, error) {
 	// สร้าง context ที่มี timeout
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
@@ -52,21 +52,39 @@ func (s *userService) Login(ctx context.Context, email, password string) (string
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		// ถ้าหาไม่เจอ ให้คืนค่า error ว่า credentials ไม่ถูกต้อง
-		return "", domain.ErrInvalidCreds
+		return "", "", domain.ErrInvalidCreds
 	}
 
 	// ตรวจสอบรหัสผ่านว่าตรงกับที่เข้ารหัสไว้หรือไม่
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		// ถ้ารหัสผ่านไม่ตรง ให้คืนค่า error ว่า credentials ไม่ถูกต้อง
-		return "", domain.ErrInvalidCreds
+		return "", "", domain.ErrInvalidCreds
 	}
 
-	// สร้าง JWT token สำหรับผู้ใช้
-	token, err := utils.GenerateToken(user.ID)
+	// สร้าง JWT token pair (Access Token และ Refresh Token)
+	accessToken, refreshToken, err := utils.GenerateTokenPair(user.ID)
+	if err != nil {
+		return "", "", err
+	}
+
+	// คืนค่า token ทั้งคู่
+	return accessToken, refreshToken, nil
+}
+
+// RefreshToken ตรวจสอบ Refresh Token และสร้าง Access Token ใหม่
+func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (string, error) {
+	// ตรวจสอบความถูกต้องของ Refresh Token
+	claims, err := utils.ValidateToken(refreshToken)
 	if err != nil {
 		return "", err
 	}
 
-	// คืนค่า token
-	return token, nil
+	// สร้าง Token Pair ใหม่ (จริงๆ เราต้องการแค่ Access Token ใหม่ แต่ใช้ฟังก์ชันเดิมเพื่อความสะดวก)
+	// หมายเหตุ: ในระบบจริงอาจจะมีการตรวจสอบเพิ่มเติม เช่น Blacklist หรือเช็คว่า user ยัง active อยู่ไหม
+	accessToken, _, err := utils.GenerateTokenPair(claims.UserID)
+	if err != nil {
+		return "", err
+	}
+
+	return accessToken, nil
 }

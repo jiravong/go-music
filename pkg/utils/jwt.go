@@ -16,21 +16,37 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// GenerateToken สร้าง JWT token สำหรับผู้ใช้
-func GenerateToken(userID uint) (string, error) {
-	// สร้าง claims
-	claims := &Claims{
+// GenerateTokenPair สร้าง Access Token และ Refresh Token
+func GenerateTokenPair(userID uint) (string, string, error) {
+	// สร้าง Access Token (อายุสั้น เช่น 15 นาที)
+	accessTokenClaims := &Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), // หมดอายุใน 24 ชั่วโมง
-			IssuedAt:  jwt.NewNumericDate(time.Now()),                     // เวลาที่ออก token
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)), // หมดอายุใน 15 นาที
+			IssuedAt:  jwt.NewNumericDate(time.Now()),                       // เวลาที่ออก token
 		},
 	}
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims)
+	accessTokenString, err := accessToken.SignedString(secretKey)
+	if err != nil {
+		return "", "", err
+	}
 
-	// สร้าง token ด้วยวิธี signing HS256
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	// เซ็นลายเซ็นและคืนค่า token เป็น string
-	return token.SignedString(secretKey)
+	// สร้าง Refresh Token (อายุนาน เช่น 7 วัน)
+	refreshTokenClaims := &Claims{
+		UserID: userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)), // หมดอายุใน 7 วัน
+			IssuedAt:  jwt.NewNumericDate(time.Now()),                         // เวลาที่ออก token
+		},
+	}
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims)
+	refreshTokenString, err := refreshToken.SignedString(secretKey)
+	if err != nil {
+		return "", "", err
+	}
+
+	return accessTokenString, refreshTokenString, nil
 }
 
 // ValidateToken ตรวจสอบความถูกต้องของ JWT token
