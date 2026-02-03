@@ -156,7 +156,7 @@ func (h *MusicHandler) GetAll(c *gin.Context) {
 	}
 
 	hydrateMusicListMediaURLs(musics)
-	c.JSON(http.StatusOK, gin.H{"musics": musics})
+	c.JSON(http.StatusOK, gin.H{"data": musics})
 }
 
 // Update แก้ไขข้อมูลเพลง
