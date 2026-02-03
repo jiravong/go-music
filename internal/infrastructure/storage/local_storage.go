@@ -57,15 +57,14 @@ func (s *LocalStorage) UploadFile(ctx context.Context, file *multipart.FileHeade
 		return "", err
 	}
 
-	// คืนค่า URL สำหรับเข้าถึงไฟล์
-	return fmt.Sprintf("%s/%s", s.BaseURL, filename), nil
+	// Store only relative path in DB (do not bind to host/port).
+	return fmt.Sprintf("/uploads/%s", filename), nil
 }
 
 // DeleteFile ลบไฟล์จากเครื่อง
 func (s *LocalStorage) DeleteFile(ctx context.Context, fileURL string) error {
-	// ดึงชื่อไฟล์จาก URL (แบบง่าย)
-	// ในการใช้งานจริงอาจต้องมีการจัดการ URL parsing ที่ซับซ้อนกว่านี้
+	// Extract filename from URL (simplified version)
+	// In a real app, you might need better parsing depending on the URL structure
 	filename := filepath.Base(fileURL)
-	// ลบไฟล์ออกจากโฟลเดอร์
 	return os.Remove(filepath.Join(s.UploadDir, filename))
 }

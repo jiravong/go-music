@@ -6,8 +6,46 @@ import (
 
 	"go-music-api/internal/domain" // นำเข้า domain entities
 
+	"os"
+	"strings"
+
 	"github.com/danielgtaylor/huma/v2" // นำเข้า huma
 )
+
+func publicBaseURL() string {
+	base := os.Getenv("PUBLIC_BASE_URL")
+	if base == "" {
+		base = "http://localhost:8080"
+	}
+	return strings.TrimRight(base, "/")
+}
+
+func toPublicURL(path string) string {
+	if path == "" {
+		return ""
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return publicBaseURL() + path
+}
+
+func hydrateMusicMediaURLs(m *domain.Music) {
+	if m == nil {
+		return
+	}
+	m.MP3URL = toPublicURL(m.MP3URL)
+	m.MP4URL = toPublicURL(m.MP4URL)
+}
+
+func hydrateMusicListMediaURLs(items []domain.Music) {
+	for i := range items {
+		hydrateMusicMediaURLs(&items[i])
+	}
+}
 
 // MusicHandler struct สำหรับจัดการ HTTP request ที่เกี่ยวกับ Music
 type MusicHandler struct {
@@ -61,6 +99,8 @@ func (h *MusicHandler) Create(ctx context.Context, input *CreateMusicInput) (*Cr
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
+	hydrateMusicMediaURLs(music)
+
 	// ส่ง response กลับ
 	return &CreateMusicOutput{
 		Body: struct {
@@ -94,6 +134,8 @@ func (h *MusicHandler) GetByID(ctx context.Context, input *GetMusicInput) (*GetM
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
 
+	hydrateMusicMediaURLs(music)
+
 	// ส่งข้อมูลเพลงกลับ
 	return &GetMusicOutput{
 		Body: struct {
@@ -118,6 +160,8 @@ func (h *MusicHandler) GetAll(ctx context.Context, input *struct{}) (*GetAllMusi
 	if err != nil {
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
+
+	hydrateMusicListMediaURLs(musics)
 
 	// ส่งรายการเพลงกลับ
 	return &GetAllMusicOutput{
@@ -172,6 +216,8 @@ func (h *MusicHandler) Update(ctx context.Context, input *UpdateMusicInput) (*Up
 		}
 		return nil, huma.Error500InternalServerError(err.Error())
 	}
+
+	hydrateMusicMediaURLs(music)
 
 	// ส่งข้อมูลที่อัปเดตแล้วกลับ
 	return &UpdateMusicOutput{
