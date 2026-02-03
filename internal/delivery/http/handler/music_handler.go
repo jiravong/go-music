@@ -1,15 +1,16 @@
 package handler // ประกาศ package handler
 
 import (
-	"context"        // นำเข้า context
 	"mime/multipart" // นำเข้า multipart สำหรับจัดการไฟล์
+	"net/http"       // นำเข้า net/http
+	"strconv"        // นำเข้า strconv
 
 	"go-music-api/internal/domain" // นำเข้า domain entities
 
 	"os"
 	"strings"
 
-	"github.com/danielgtaylor/huma/v2" // นำเข้า huma
+	"github.com/gin-gonic/gin" // นำเข้า gin
 )
 
 func publicBaseURL() string {
@@ -57,206 +58,171 @@ func NewMusicHandler(musicService domain.MusicService) *MusicHandler {
 	return &MusicHandler{musicService: musicService}
 }
 
-// CreateMusicInput struct สำหรับรับข้อมูลสร้างเพลง
-type CreateMusicInput struct {
-	Body struct {
-		Title   string                `form:"title" required:"true" doc:"Song title"`
-		Artist  string                `form:"artist" required:"true" doc:"Artist name"`
-		Lyrics  string                `form:"lyrics" doc:"Song lyrics"`
-		MP3File *multipart.FileHeader `form:"mp3_file" doc:"MP3 Audio file"`
-		MP4File *multipart.FileHeader `form:"mp4_file" doc:"MP4 Video file"`
-	} `contentType:"multipart/form-data"`
-}
-
-// CreateMusicOutput struct สำหรับ response การสร้างเพลง
-type CreateMusicOutput struct {
-	Body struct {
-		Music *domain.Music `json:"music" doc:"Created music object"`
-	}
+type updateMusicRequest struct {
+	Title  string `json:"title"`
+	Artist string `json:"artist"`
+	Lyrics string `json:"lyrics"`
 }
 
 // Create จัดการ request สำหรับสร้างเพลงใหม่
-func (h *MusicHandler) Create(ctx context.Context, input *CreateMusicInput) (*CreateMusicOutput, error) {
-	// ดึง email จาก context
-	email, ok := ctx.Value("email").(string)
-	if !ok {
-		email = "system"
+func (h *MusicHandler) Create(c *gin.Context) {
+	email, ok := c.Get("email")
+	createdEmail, ok2 := email.(string)
+	if !ok || !ok2 || createdEmail == "" {
+		createdEmail = "system"
 	}
 
-	// สร้าง object Music
+	title := c.PostForm("title")
+	artist := c.PostForm("artist")
+	lyrics := c.PostForm("lyrics")
+	if title == "" || artist == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "title and artist are required"})
+		return
+	}
+
+	var mp3File *multipart.FileHeader
+	if fh, err := c.FormFile("mp3_file"); err == nil {
+		mp3File = fh
+	} else if err != http.ErrMissingFile {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var mp4File *multipart.FileHeader
+	if fh, err := c.FormFile("mp4_file"); err == nil {
+		mp4File = fh
+	} else if err != http.ErrMissingFile {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	const maxUploadFileSize = 10 << 20
+	if mp3File != nil && mp3File.Size > maxUploadFileSize {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "mp3_file is too large (max 10MB)"})
+		return
+	}
+	if mp4File != nil && mp4File.Size > maxUploadFileSize {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "mp4_file is too large (max 10MB)"})
+		return
+	}
+
 	music := &domain.Music{
-		Title:  input.Body.Title,
-		Artist: input.Body.Artist,
-		Lyrics: input.Body.Lyrics,
+		Title:  title,
+		Artist: artist,
+		Lyrics: lyrics,
 		BaseModel: domain.BaseModel{
-			CreatedBy: email,
-			UpdatedBy: email,
+			CreatedBy: createdEmail,
+			UpdatedBy: createdEmail,
 		},
 	}
 
-	// เรียก service เพื่อสร้างเพลงและอัปโหลดไฟล์
-	if err := h.musicService.Create(ctx, music, input.Body.MP3File, input.Body.MP4File); err != nil {
-		return nil, huma.Error500InternalServerError(err.Error())
+	if err := h.musicService.Create(c.Request.Context(), music, mp3File, mp4File); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	hydrateMusicMediaURLs(music)
-
-	// ส่ง response กลับ
-	return &CreateMusicOutput{
-		Body: struct {
-			Music *domain.Music `json:"music" doc:"Created music object"`
-		}{
-			Music: music,
-		},
-	}, nil
-}
-
-// GetMusicInput struct สำหรับรับ ID เพลง
-type GetMusicInput struct {
-	ID uint `path:"id" required:"true" doc:"Music ID"`
-}
-
-// GetMusicOutput struct สำหรับ response ข้อมูลเพลง
-type GetMusicOutput struct {
-	Body struct {
-		Music *domain.Music `json:"music" doc:"Music object"`
-	}
+	c.JSON(http.StatusCreated, gin.H{"music": music})
 }
 
 // GetByID ดึงข้อมูลเพลงตาม ID
-func (h *MusicHandler) GetByID(ctx context.Context, input *GetMusicInput) (*GetMusicOutput, error) {
-	// เรียก service เพื่อค้นหาเพลง
-	music, err := h.musicService.GetByID(ctx, input.ID)
+func (h *MusicHandler) GetByID(c *gin.Context) {
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	music, err := h.musicService.GetByID(c.Request.Context(), uint(id64))
 	if err != nil {
 		if err == domain.ErrNotFound {
-			return nil, huma.Error404NotFound("Music not found")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
+			return
 		}
-		return nil, huma.Error500InternalServerError(err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	hydrateMusicMediaURLs(music)
-
-	// ส่งข้อมูลเพลงกลับ
-	return &GetMusicOutput{
-		Body: struct {
-			Music *domain.Music `json:"music" doc:"Music object"`
-		}{
-			Music: music,
-		},
-	}, nil
-}
-
-// GetAllMusicOutput struct สำหรับ response รายการเพลง
-type GetAllMusicOutput struct {
-	Body struct {
-		Musics []domain.Music `json:"musics" doc:"List of music objects"`
-	}
+	c.JSON(http.StatusOK, gin.H{"music": music})
 }
 
 // GetAll ดึงข้อมูลเพลงทั้งหมด
-func (h *MusicHandler) GetAll(ctx context.Context, input *struct{}) (*GetAllMusicOutput, error) {
-	// เรียก service เพื่อดึงเพลงทั้งหมด
-	musics, err := h.musicService.GetAll(ctx)
+func (h *MusicHandler) GetAll(c *gin.Context) {
+	musics, err := h.musicService.GetAll(c.Request.Context())
 	if err != nil {
-		return nil, huma.Error500InternalServerError(err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	hydrateMusicListMediaURLs(musics)
-
-	// ส่งรายการเพลงกลับ
-	return &GetAllMusicOutput{
-		Body: struct {
-			Musics []domain.Music `json:"musics" doc:"List of music objects"`
-		}{
-			Musics: musics,
-		},
-	}, nil
-}
-
-// UpdateMusicInput struct สำหรับรับข้อมูลแก้ไขเพลง
-type UpdateMusicInput struct {
-	ID   uint `path:"id" required:"true" doc:"Music ID"`
-	Body struct {
-		Title  string `json:"title" doc:"Song title"`
-		Artist string `json:"artist" doc:"Artist name"`
-		Lyrics string `json:"lyrics" doc:"Song lyrics"`
-	}
-}
-
-// UpdateMusicOutput struct สำหรับ response การแก้ไขเพลง
-type UpdateMusicOutput struct {
-	Body struct {
-		Music *domain.Music `json:"music" doc:"Updated music object"`
-	}
+	c.JSON(http.StatusOK, gin.H{"musics": musics})
 }
 
 // Update แก้ไขข้อมูลเพลง
-func (h *MusicHandler) Update(ctx context.Context, input *UpdateMusicInput) (*UpdateMusicOutput, error) {
-	// ดึง email จาก context
-	email, ok := ctx.Value("email").(string)
-	if !ok {
-		email = "system"
+func (h *MusicHandler) Update(c *gin.Context) {
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
 	}
 
-	// Map ข้อมูลจาก input ไปยัง domain.Music
+	email, ok := c.Get("email")
+	updatedEmail, ok2 := email.(string)
+	if !ok || !ok2 || updatedEmail == "" {
+		updatedEmail = "system"
+	}
+
+	var req updateMusicRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	music := &domain.Music{
 		BaseModel: domain.BaseModel{
-			ID:        input.ID,
-			UpdatedBy: email,
+			ID:        uint(id64),
+			UpdatedBy: updatedEmail,
 		},
-		Title:  input.Body.Title,
-		Artist: input.Body.Artist,
-		Lyrics: input.Body.Lyrics,
+		Title:  req.Title,
+		Artist: req.Artist,
+		Lyrics: req.Lyrics,
 	}
 
-	// เรียก service เพื่ออัปเดตข้อมูล
-	if err := h.musicService.Update(ctx, music); err != nil {
+	if err := h.musicService.Update(c.Request.Context(), music); err != nil {
 		if err == domain.ErrNotFound {
-			return nil, huma.Error404NotFound("Music not found")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
+			return
 		}
-		return nil, huma.Error500InternalServerError(err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
-	hydrateMusicMediaURLs(music)
-
-	// ส่งข้อมูลที่อัปเดตแล้วกลับ
-	return &UpdateMusicOutput{
-		Body: struct {
-			Music *domain.Music `json:"music" doc:"Updated music object"`
-		}{
-			Music: music,
-		},
-	}, nil
-}
-
-// DeleteMusicInput struct สำหรับรับ ID เพลงที่จะลบ
-type DeleteMusicInput struct {
-	ID uint `path:"id" required:"true" doc:"Music ID"`
-}
-
-// DeleteMusicOutput struct สำหรับ response การลบเพลง
-type DeleteMusicOutput struct {
-	Body struct {
-		Message string `json:"message" doc:"Success message"`
+	updated, err := h.musicService.GetByID(c.Request.Context(), uint(id64))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
+	hydrateMusicMediaURLs(updated)
+	c.JSON(http.StatusOK, gin.H{"music": updated})
 }
 
 // Delete ลบเพลง
-func (h *MusicHandler) Delete(ctx context.Context, input *DeleteMusicInput) (*DeleteMusicOutput, error) {
-	// เรียก service เพื่อลบเพลง
-	if err := h.musicService.Delete(ctx, input.ID); err != nil {
-		if err == domain.ErrNotFound {
-			return nil, huma.Error404NotFound("Music not found")
-		}
-		return nil, huma.Error500InternalServerError(err.Error())
+func (h *MusicHandler) Delete(c *gin.Context) {
+	id64, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
 	}
 
-	// ส่งข้อความยืนยันการลบ
-	return &DeleteMusicOutput{
-		Body: struct {
-			Message string `json:"message" doc:"Success message"`
-		}{
-			Message: "Music deleted successfully",
-		},
-	}, nil
+	if err := h.musicService.Delete(c.Request.Context(), uint(id64)); err != nil {
+		if err == domain.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Music deleted successfully"})
 }
