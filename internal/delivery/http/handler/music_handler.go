@@ -144,7 +144,7 @@ func (h *MusicHandler) GetByID(c *gin.Context) {
 	}
 
 	hydrateMusicMediaURLs(music)
-	c.JSON(http.StatusOK, gin.H{"music": music})
+	c.JSON(http.StatusOK, gin.H{"data": music})
 }
 
 // GetAll ดึงข้อมูลเพลงทั้งหมด
@@ -204,7 +204,7 @@ func (h *MusicHandler) Update(c *gin.Context) {
 		return
 	}
 	hydrateMusicMediaURLs(updated)
-	c.JSON(http.StatusOK, gin.H{"music": updated})
+	c.JSON(http.StatusOK, gin.H{"data": updated})
 }
 
 // Delete ลบเพลง
