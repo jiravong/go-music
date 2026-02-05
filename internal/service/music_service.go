@@ -25,7 +25,7 @@ func NewMusicService(musicRepo domain.MusicRepository, storage domain.StorageSer
 }
 
 // Create สร้างเพลงใหม่พร้อมอัปโหลดไฟล์
-func (s *musicService) Create(ctx context.Context, music *domain.Music, mp3File, mp4File *multipart.FileHeader) error {
+func (s *musicService) Create(ctx context.Context, music *domain.Music, mp3File, mp4File, imageFile *multipart.FileHeader) error {
 	// สร้าง context ใหม่ที่มี timeout เพื่อป้องกันการทำงานนานเกินไป
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel() // ยกเลิก context เมื่อฟังก์ชันทำงานเสร็จ
@@ -53,6 +53,15 @@ func (s *musicService) Create(ctx context.Context, music *domain.Music, mp3File,
 		music.MP4URL = url
 	}
 
+	// ตรวจสอบว่ามีการอัปโหลดรูปหน้าปกหรือไม่
+	if imageFile != nil {
+		url, err := s.storage.UploadFile(ctx, imageFile)
+		if err != nil {
+			return err
+		}
+		music.ImageURL = url
+	}
+
 	// บันทึกข้อมูลเพลงลงฐานข้อมูล
 	return s.musicRepo.Create(ctx, music)
 }
@@ -76,7 +85,7 @@ func (s *musicService) GetAll(ctx context.Context) ([]domain.Music, error) {
 }
 
 // Update อัปเดตข้อมูลเพลง
-func (s *musicService) Update(ctx context.Context, music *domain.Music) error {
+func (s *musicService) Update(ctx context.Context, music *domain.Music, mp3File, mp4File, imageFile *multipart.FileHeader) error {
 	// สร้าง context ที่มี timeout
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
@@ -93,6 +102,39 @@ func (s *musicService) Update(ctx context.Context, music *domain.Music) error {
 	existingMusic.Lyrics = music.Lyrics
 	existingMusic.UpdatedBy = music.UpdatedBy
 	// existingMusic.UpdatedAt จะถูกจัดการโดย GORM หรือเราจะ set เองก็ได้ แต่ GORM จัดการให้
+
+	if mp3File != nil {
+		url, err := s.storage.UploadFile(ctx, mp3File)
+		if err != nil {
+			return err
+		}
+		if existingMusic.MP3URL != "" {
+			_ = s.storage.DeleteFile(ctx, existingMusic.MP3URL)
+		}
+		existingMusic.MP3URL = url
+	}
+
+	if mp4File != nil {
+		url, err := s.storage.UploadFile(ctx, mp4File)
+		if err != nil {
+			return err
+		}
+		if existingMusic.MP4URL != "" {
+			_ = s.storage.DeleteFile(ctx, existingMusic.MP4URL)
+		}
+		existingMusic.MP4URL = url
+	}
+
+	if imageFile != nil {
+		url, err := s.storage.UploadFile(ctx, imageFile)
+		if err != nil {
+			return err
+		}
+		if existingMusic.ImageURL != "" {
+			_ = s.storage.DeleteFile(ctx, existingMusic.ImageURL)
+		}
+		existingMusic.ImageURL = url
+	}
 
 	// บันทึกข้อมูลที่อัปเดตแล้วลงฐานข้อมูล
 	return s.musicRepo.Update(ctx, existingMusic)
@@ -117,6 +159,10 @@ func (s *musicService) Delete(ctx context.Context, id uint) error {
 	// ลบไฟล์ MP4 จาก storage ถ้ามี
 	if music.MP4URL != "" {
 		_ = s.storage.DeleteFile(ctx, music.MP4URL)
+	}
+	// ลบรูปหน้าปกจาก storage ถ้ามี
+	if music.ImageURL != "" {
+		_ = s.storage.DeleteFile(ctx, music.ImageURL)
 	}
 
 	// ลบข้อมูลเพลงจากฐานข้อมูล

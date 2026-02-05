@@ -40,6 +40,7 @@ func hydrateMusicMediaURLs(m *domain.Music) {
 	}
 	m.MP3URL = toPublicURL(m.MP3URL)
 	m.MP4URL = toPublicURL(m.MP4URL)
+	m.ImageURL = toPublicURL(m.ImageURL)
 }
 
 func hydrateMusicListMediaURLs(items []domain.Music) {
@@ -59,9 +60,9 @@ func NewMusicHandler(musicService domain.MusicService) *MusicHandler {
 }
 
 type updateMusicRequest struct {
-	Title  string `json:"title"`
-	Artist string `json:"artist"`
-	Lyrics string `json:"lyrics"`
+	Title  *string `json:"title"`
+	Artist *string `json:"artist"`
+	Lyrics *string `json:"lyrics"`
 }
 
 // Create จัดการ request สำหรับสร้างเพลงใหม่
@@ -70,6 +71,21 @@ func (h *MusicHandler) Create(c *gin.Context) {
 	createdEmail, ok2 := email.(string)
 	if !ok || !ok2 || createdEmail == "" {
 		createdEmail = "system"
+	}
+
+	if form, err := c.MultipartForm(); err == nil && form != nil {
+		if files := form.File["mp3_file"]; len(files) > 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "mp3_file must be a single file"})
+			return
+		}
+		if files := form.File["mp4_file"]; len(files) > 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "mp4_file must be a single file"})
+			return
+		}
+		if files := form.File["image"]; len(files) > 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "image must be a single file"})
+			return
+		}
 	}
 
 	title := c.PostForm("title")
@@ -96,6 +112,14 @@ func (h *MusicHandler) Create(c *gin.Context) {
 		return
 	}
 
+	var imageFile *multipart.FileHeader
+	if fh, err := c.FormFile("image"); err == nil {
+		imageFile = fh
+	} else if err != http.ErrMissingFile {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	const maxUploadFileSize = 10 << 20
 	if mp3File != nil && mp3File.Size > maxUploadFileSize {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "mp3_file is too large (max 10MB)"})
@@ -103,6 +127,10 @@ func (h *MusicHandler) Create(c *gin.Context) {
 	}
 	if mp4File != nil && mp4File.Size > maxUploadFileSize {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "mp4_file is too large (max 10MB)"})
+		return
+	}
+	if imageFile != nil && imageFile.Size > maxUploadFileSize {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "image is too large (max 10MB)"})
 		return
 	}
 
@@ -116,7 +144,7 @@ func (h *MusicHandler) Create(c *gin.Context) {
 		},
 	}
 
-	if err := h.musicService.Create(c.Request.Context(), music, mp3File, mp4File); err != nil {
+	if err := h.musicService.Create(c.Request.Context(), music, mp3File, mp4File, imageFile); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -173,23 +201,147 @@ func (h *MusicHandler) Update(c *gin.Context) {
 		updatedEmail = "system"
 	}
 
+	existing, err := h.musicService.GetByID(c.Request.Context(), uint(id64))
+	if err != nil {
+		if err == domain.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	contentType := c.GetHeader("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if form, err := c.MultipartForm(); err == nil && form != nil {
+			if files := form.File["mp3_file"]; len(files) > 1 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "mp3_file must be a single file"})
+				return
+			}
+			if files := form.File["mp4_file"]; len(files) > 1 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "mp4_file must be a single file"})
+				return
+			}
+			if files := form.File["image"]; len(files) > 1 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "image must be a single file"})
+				return
+			}
+		}
+
+		title := c.PostForm("title")
+		artist := c.PostForm("artist")
+		lyrics := c.PostForm("lyrics")
+
+		var mp3File *multipart.FileHeader
+		if fh, err := c.FormFile("mp3_file"); err == nil {
+			mp3File = fh
+		} else if err != http.ErrMissingFile {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var mp4File *multipart.FileHeader
+		if fh, err := c.FormFile("mp4_file"); err == nil {
+			mp4File = fh
+		} else if err != http.ErrMissingFile {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		var imageFile *multipart.FileHeader
+		if fh, err := c.FormFile("image"); err == nil {
+			imageFile = fh
+		} else if err != http.ErrMissingFile {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		const maxUploadFileSize = 10 << 20
+		if mp3File != nil && mp3File.Size > maxUploadFileSize {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "mp3_file is too large (max 10MB)"})
+			return
+		}
+		if mp4File != nil && mp4File.Size > maxUploadFileSize {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "mp4_file is too large (max 10MB)"})
+			return
+		}
+		if imageFile != nil && imageFile.Size > maxUploadFileSize {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "image is too large (max 10MB)"})
+			return
+		}
+
+		merged := &domain.Music{
+			BaseModel: domain.BaseModel{
+				ID:        existing.ID,
+				CreatedBy: existing.CreatedBy,
+				UpdatedBy: updatedEmail,
+			},
+			Title:    existing.Title,
+			Artist:   existing.Artist,
+			Lyrics:   existing.Lyrics,
+			MP3URL:   existing.MP3URL,
+			MP4URL:   existing.MP4URL,
+			ImageURL: existing.ImageURL,
+		}
+		if title != "" {
+			merged.Title = title
+		}
+		if artist != "" {
+			merged.Artist = artist
+		}
+		if lyrics != "" {
+			merged.Lyrics = lyrics
+		}
+
+		if err := h.musicService.Update(c.Request.Context(), merged, mp3File, mp4File, imageFile); err != nil {
+			if err == domain.ErrNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		updated, err := h.musicService.GetByID(c.Request.Context(), uint(id64))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		hydrateMusicMediaURLs(updated)
+		c.JSON(http.StatusOK, gin.H{"data": updated})
+		return
+	}
+
 	var req updateMusicRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	music := &domain.Music{
+	merged := &domain.Music{
 		BaseModel: domain.BaseModel{
-			ID:        uint(id64),
+			ID:        existing.ID,
+			CreatedBy: existing.CreatedBy,
 			UpdatedBy: updatedEmail,
 		},
-		Title:  req.Title,
-		Artist: req.Artist,
-		Lyrics: req.Lyrics,
+		Title:    existing.Title,
+		Artist:   existing.Artist,
+		Lyrics:   existing.Lyrics,
+		MP3URL:   existing.MP3URL,
+		MP4URL:   existing.MP4URL,
+		ImageURL: existing.ImageURL,
+	}
+	if req.Title != nil {
+		merged.Title = *req.Title
+	}
+	if req.Artist != nil {
+		merged.Artist = *req.Artist
+	}
+	if req.Lyrics != nil {
+		merged.Lyrics = *req.Lyrics
 	}
 
-	if err := h.musicService.Update(c.Request.Context(), music); err != nil {
+	if err := h.musicService.Update(c.Request.Context(), merged, nil, nil, nil); err != nil {
 		if err == domain.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Music not found"})
 			return

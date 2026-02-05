@@ -208,6 +208,11 @@
 									"key": "mp4_file",
 									"type": "file",
 									"src": []
+								},
+								{
+									"key": "image",
+									"type": "file",
+									"src": []
 								}
 							]
 						},
@@ -319,6 +324,69 @@
 									"language": "json"
 								}
 							}
+						},
+						"url": {
+							"raw": "{{base_url}}/music/1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"music",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Music (Upload)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "title",
+									"value": "Updated Song Title",
+									"type": "text"
+								},
+								{
+									"key": "artist",
+									"value": "Updated Artist",
+									"type": "text"
+								},
+								{
+									"key": "lyrics",
+									"value": "Updated Lyrics",
+									"type": "text"
+								},
+								{
+									"key": "mp3_file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "mp4_file",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "image",
+									"type": "file",
+									"src": []
+								}
+							]
 						},
 						"url": {
 							"raw": "{{base_url}}/music/1",
