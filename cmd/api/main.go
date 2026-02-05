@@ -149,6 +149,13 @@ func main() { // ฟังก์ชัน main เป็นจุดเริ่
 			music.PUT("/:id", musicHandler.Update)
 			music.DELETE("/:id", musicHandler.Delete)
 		}
+
+		user := api.Group("/user")
+		user.Use(middleware.AuthMiddleware())
+		{
+			user.GET("", userHandler.GetMe)
+			user.PUT("", userHandler.UpdateMe)
+		}
 	}
 
 	// อ่านค่า PORT จาก environment variable

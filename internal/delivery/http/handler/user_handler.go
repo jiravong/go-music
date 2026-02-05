@@ -19,8 +19,11 @@ func NewUserHandler(userService domain.UserService) *UserHandler {
 }
 
 type registerRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Email        string `json:"email" binding:"required,email"`
+	Password     string `json:"password" binding:"required,min=6"`
+	FirstName    string `json:"first_name"`
+	LastName     string `json:"last_name"`
+	ImageProfile string `json:"image_profile"`
 }
 
 // Register ลงทะเบียนผู้ใช้ใหม่
@@ -32,8 +35,11 @@ func (h *UserHandler) Register(c *gin.Context) {
 	}
 
 	user := &domain.User{
-		Email:    req.Email,
-		Password: req.Password,
+		Email:        req.Email,
+		Password:     req.Password,
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
+		ImageProfile: req.ImageProfile,
 	}
 
 	if err := h.userService.Register(c.Request.Context(), user); err != nil {
@@ -96,4 +102,90 @@ func (h *UserHandler) RefreshToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"access_token": accessToken})
+}
+
+func (h *UserHandler) GetMe(c *gin.Context) {
+	userIDAny, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	userID, ok := userIDAny.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	user, err := h.userService.GetByID(c.Request.Context(), userID)
+	if err != nil {
+		if err == domain.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": user})
+}
+
+type updateMeRequest struct {
+	FirstName    *string `json:"first_name"`
+	LastName     *string `json:"last_name"`
+	ImageProfile *string `json:"image_profile"`
+}
+
+func (h *UserHandler) UpdateMe(c *gin.Context) {
+	userIDAny, ok := c.Get("user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	userID, ok := userIDAny.(uint)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var req updateMeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updates := map[string]any{}
+	if req.FirstName != nil {
+		updates["first_name"] = *req.FirstName
+	}
+	if req.LastName != nil {
+		updates["last_name"] = *req.LastName
+	}
+	if req.ImageProfile != nil {
+		updates["image_profile"] = *req.ImageProfile
+	}
+
+	if emailAny, ok := c.Get("email"); ok {
+		if email, ok := emailAny.(string); ok && email != "" {
+			updates["updated_by"] = email
+		}
+	}
+
+	if len(updates) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "no fields to update"})
+		return
+	}
+
+	user, err := h.userService.UpdateProfile(c.Request.Context(), userID, updates)
+	if err != nil {
+		if err == domain.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": user})
 }

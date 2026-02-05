@@ -59,3 +59,14 @@ func (r *userRepository) GetByID(ctx context.Context, id uint) (*domain.User, er
 	}
 	return &user, nil
 }
+
+func (r *userRepository) UpdateProfile(ctx context.Context, id uint, updates map[string]any) error {
+	res := r.db.WithContext(ctx).Model(&domain.User{}).Where("id = ?", id).Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}

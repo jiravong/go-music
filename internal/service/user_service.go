@@ -88,3 +88,21 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (st
 
 	return accessToken, nil
 }
+
+func (s *userService) GetByID(ctx context.Context, id uint) (*domain.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	return s.userRepo.GetByID(ctx, id)
+}
+
+func (s *userService) UpdateProfile(ctx context.Context, id uint, updates map[string]any) (*domain.User, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	if err := s.userRepo.UpdateProfile(ctx, id, updates); err != nil {
+		return nil, err
+	}
+
+	return s.userRepo.GetByID(ctx, id)
+}

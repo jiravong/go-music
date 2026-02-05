@@ -15,6 +15,11 @@
 			"key": "token",
 			"value": "",
 			"type": "string"
+		},
+		{
+			"key": "refresh_token",
+			"value": "",
+			"type": "string"
 		}
 	],
 	"item": [
@@ -28,7 +33,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\",\n    \"first_name\": \"Test\",\n    \"last_name\": \"User\",\n    \"image_profile\": \"https://example.com/profile.jpg\"\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -154,8 +159,9 @@
 									"",
 									"pm.test(\"Response has file URLs\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData.mp3_url).to.not.be.null;",
-									"    pm.expect(jsonData.mp4_url).to.not.be.null;",
+									"    pm.expect(jsonData.music).to.not.be.undefined;",
+									"    pm.expect(jsonData.music.mp3_url).to.not.be.undefined;",
+									"    pm.expect(jsonData.music.mp4_url).to.not.be.undefined;",
 									"});"
 								],
 								"type": "text/javascript"
@@ -206,13 +212,12 @@
 							]
 						},
 						"url": {
-							"raw": "{{base_url}}/music/",
+							"raw": "{{base_url}}/music",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"music",
-								""
+								"music"
 							]
 						}
 					},
@@ -234,13 +239,12 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{base_url}}/music/",
+							"raw": "{{base_url}}/music",
 							"host": [
 								"{{base_url}}"
 							],
 							"path": [
-								"music",
-								""
+								"music"
 							]
 						}
 					},
@@ -276,6 +280,24 @@
 				},
 				{
 					"name": "Update Music",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has data\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.data).to.not.be.undefined;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
 					"request": {
 						"auth": {
 							"type": "bearer",
@@ -334,6 +356,74 @@
 							"path": [
 								"music",
 								"1"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User",
+			"item": [
+				{
+					"name": "Get Me",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/user",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"user"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Me",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"first_name\": \"Updated\",\n    \"last_name\": \"User\",\n    \"image_profile\": \"https://example.com/new-profile.jpg\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/user",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"user"
 							]
 						}
 					},
