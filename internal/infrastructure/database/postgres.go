@@ -13,15 +13,19 @@ import (
 
 // NewPostgresDB สร้างการเชื่อมต่อกับฐานข้อมูล Postgres
 func NewPostgresDB() (*gorm.DB, error) {
-	// สร้าง DSN (Data Source Name) สำหรับเชื่อมต่อฐานข้อมูล
-	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Bangkok",
-		os.Getenv("DB_HOST"),     // อ่าน host จาก env
-		os.Getenv("DB_USER"),     // อ่าน user จาก env
-		os.Getenv("DB_PASSWORD"), // อ่าน password จาก env
-		os.Getenv("DB_NAME"),     // อ่าน db name จาก env
-		os.Getenv("DB_PORT"),     // อ่าน port จาก env
-	)
+	// ถ้ามี DATABASE_URL (เช่น บน Render) ให้ใช้เป็น DSN โดยตรง
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		// ถ้าไม่มี DATABASE_URL ให้สร้าง DSN จาก env vars แยก (สำหรับ local dev)
+		dsn = fmt.Sprintf(
+			"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Bangkok",
+			os.Getenv("DB_HOST"),
+			os.Getenv("DB_USER"),
+			os.Getenv("DB_PASSWORD"),
+			os.Getenv("DB_NAME"),
+			os.Getenv("DB_PORT"),
+		)
+	}
 
 	// เปิดการเชื่อมต่อกับฐานข้อมูลโดยใช้ gorm
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
