@@ -256,6 +256,43 @@
 					"response": []
 				},
 				{
+					"name": "Get All Music (Pagination)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/music?page=1&limit=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"music"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
 					"name": "Get Music By ID",
 					"request": {
 						"auth": {

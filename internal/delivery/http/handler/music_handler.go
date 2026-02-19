@@ -177,14 +177,55 @@ func (h *MusicHandler) GetByID(c *gin.Context) {
 
 // GetAll ดึงข้อมูลเพลงทั้งหมด
 func (h *MusicHandler) GetAll(c *gin.Context) {
-	musics, err := h.musicService.GetAll(c.Request.Context())
+	pageStr, hasPage := c.GetQuery("page")
+	limitStr, hasLimit := c.GetQuery("limit")
+
+	if !hasPage && !hasLimit {
+		musics, err := h.musicService.GetAll(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		hydrateMusicListMediaURLs(musics)
+		c.JSON(http.StatusOK, gin.H{"data": musics})
+		return
+	}
+
+	page := 1
+	limit := 10
+	if hasPage {
+		p, err := strconv.Atoi(pageStr)
+		if err != nil || p < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page"})
+			return
+		}
+		page = p
+	}
+	if hasLimit {
+		l, err := strconv.Atoi(limitStr)
+		if err != nil || l < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+			return
+		}
+		limit = l
+	}
+
+	musics, total, err := h.musicService.GetAllPaged(c.Request.Context(), page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	hydrateMusicListMediaURLs(musics)
-	c.JSON(http.StatusOK, gin.H{"data": musics})
+	c.JSON(http.StatusOK, gin.H{
+		"data": musics,
+		"pagination": gin.H{
+			"page":  page,
+			"limit": limit,
+			"total": total,
+		},
+	})
 }
 
 // Update แก้ไขข้อมูลเพลง

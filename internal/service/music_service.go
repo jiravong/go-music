@@ -84,6 +84,13 @@ func (s *musicService) GetAll(ctx context.Context) ([]domain.Music, error) {
 	return s.musicRepo.GetAll(ctx)
 }
 
+func (s *musicService) GetAllPaged(ctx context.Context, page, limit int) ([]domain.Music, int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	return s.musicRepo.GetAllPaged(ctx, page, limit)
+}
+
 // Update อัปเดตข้อมูลเพลง
 func (s *musicService) Update(ctx context.Context, music *domain.Music, mp3File, mp4File, imageFile *multipart.FileHeader) error {
 	// สร้าง context ที่มี timeout

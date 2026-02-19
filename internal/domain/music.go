@@ -21,8 +21,9 @@ type MusicRepository interface {
 	Create(ctx context.Context, music *Music) error       // สร้างเพลงใหม่
 	GetByID(ctx context.Context, id uint) (*Music, error) // ดึงข้อมูลเพลงตาม ID
 	GetAll(ctx context.Context) ([]Music, error)          // ดึงข้อมูลเพลงทั้งหมด
-	Update(ctx context.Context, music *Music) error       // อัปเดตข้อมูลเพลง
-	Delete(ctx context.Context, id uint) error            // ลบเพลง
+	GetAllPaged(ctx context.Context, page, limit int) ([]Music, int64, error)
+	Update(ctx context.Context, music *Music) error // อัปเดตข้อมูลเพลง
+	Delete(ctx context.Context, id uint) error      // ลบเพลง
 }
 
 // MusicService interface กำหนดเมธอดสำหรับ business logic ของ Music
@@ -30,6 +31,7 @@ type MusicService interface {
 	Create(ctx context.Context, music *Music, mp3File, mp4File, imageFile *multipart.FileHeader) error // สร้างเพลงพร้อมอัปโหลดไฟล์
 	GetByID(ctx context.Context, id uint) (*Music, error)                                              // ดึงข้อมูลเพลงตาม ID
 	GetAll(ctx context.Context) ([]Music, error)                                                       // ดึงข้อมูลเพลงทั้งหมด
+	GetAllPaged(ctx context.Context, page, limit int) ([]Music, int64, error)
 	Update(ctx context.Context, music *Music, mp3File, mp4File, imageFile *multipart.FileHeader) error // อัปเดตข้อมูลเพลง
 	Delete(ctx context.Context, id uint) error                                                         // ลบเพลง
 }

@@ -52,6 +52,34 @@ func (r *musicRepository) GetAll(ctx context.Context) ([]domain.Music, error) {
 	return musics, nil
 }
 
+func (r *musicRepository) GetAllPaged(ctx context.Context, page, limit int) ([]domain.Music, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&domain.Music{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	var musics []domain.Music
+	if err := r.db.WithContext(ctx).
+		Limit(limit).
+		Offset(offset).
+		Find(&musics).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return musics, total, nil
+}
+
 // Update อัปเดตข้อมูลเพลง
 func (r *musicRepository) Update(ctx context.Context, music *domain.Music) error {
 	// บันทึกการเปลี่ยนแปลงข้อมูลทั้งหมดของ object music ลงฐานข้อมูล
