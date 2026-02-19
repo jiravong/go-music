@@ -21,7 +21,7 @@ go.work
 .env
 
 # IDEs
-.vscode/
+# .vscode/
 .idea/
 
 # OS Specific
